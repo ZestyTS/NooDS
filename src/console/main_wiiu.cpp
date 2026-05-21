@@ -33,6 +33,10 @@
 #include <whb/gfx.h>
 #include <SDL2/SDL.h>
 
+#include <algorithm>
+#include <cctype>
+#include <fstream>
+
 #include "console_ui.h"
 #include "../settings.h"
 
@@ -262,6 +266,52 @@ void outputAudio(void *data, uint8_t *buffer, int length) {
     ConsoleUI::fillAudioBuffer((uint32_t*)buffer, length / sizeof(uint32_t), 32768);
 }
 
+static std::string trimAutobootLine(std::string line) {
+    // Remove comments and surrounding whitespace.
+    size_t comment = line.find('#');
+    if (comment != std::string::npos)
+        line = line.substr(0, comment);
+
+    size_t start = 0;
+    while (start < line.size() && std::isspace((unsigned char)line[start]))
+        start++;
+
+    size_t end = line.size();
+    while (end > start && std::isspace((unsigned char)line[end - 1]))
+        end--;
+
+    line = line.substr(start, end - start);
+    if (line.rfind("rom=", 0) == 0)
+        line = line.substr(4);
+
+    start = 0;
+    while (start < line.size() && std::isspace((unsigned char)line[start]))
+        start++;
+
+    end = line.size();
+    while (end > start && std::isspace((unsigned char)line[end - 1]))
+        end--;
+
+    return line.substr(start, end - start);
+}
+
+static bool readAutobootPath(const std::string &configPath, std::string &romPath) {
+    std::ifstream input(configPath);
+    if (!input.is_open())
+        return false;
+
+    std::string line;
+    while (std::getline(input, line)) {
+        std::string candidate = trimAutobootLine(line);
+        if (!candidate.empty()) {
+            romPath = candidate;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 int main() {
     // Initialize various things
     ProcUIInit(OSSavesDone_ReadyToRelease);
@@ -356,10 +406,19 @@ int main() {
     SDL_AudioDeviceID id = SDL_OpenAudioDevice(nullptr, 0, &AudioSettings, &ObtainedSettings, 0);
     SDL_PauseAudioDevice(id, 0);
 
-    // Initialize the UI and open the file browser
+    // Initialize the UI and open the configured autoboot ROM if available.
     std::string base = WHBGetSdCardMountPath();
     ConsoleUI::initialize(tvWidth, tvHeight, base, base + "/wiiu/apps/noods/");
-    ConsoleUI::fileBrowser();
+    std::string autobootPath;
+    bool loadedAutoboot =
+        (readAutobootPath("fs:/vol/content/autoboot.txt", autobootPath) ||
+         readAutobootPath("fs:/vol/content/noods/autoboot.txt", autobootPath) ||
+         readAutobootPath(base + "/wiiu/apps/noods/autoboot.txt", autobootPath) ||
+         readAutobootPath(base + "/uinjectforge/noods/autoboot.txt", autobootPath)) &&
+        ConsoleUI::setPath(autobootPath) == 2;
+
+    if (!loadedAutoboot)
+        ConsoleUI::fileBrowser();
 
     // Run the emulator until it exits
     ConsoleUI::mainLoop(nullptr, &gpLayout);

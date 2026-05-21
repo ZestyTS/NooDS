@@ -337,7 +337,8 @@ void ConsoleUI::mainLoop(MenuTouch (*specialTouch)(), ScreenLayout *touchLayout)
 
 int ConsoleUI::setPath(std::string path) {
     // Set the ROM path if the extension matches
-    if (path.find(".nds", path.length() - 4) != std::string::npos) { // NDS ROM
+    if (path.find(".nds", path.length() - 4) != std::string::npos ||
+        path.find(".srl", path.length() - 4) != std::string::npos) { // NDS ROM
         // If a GBA path is set, allow clearing it
         if (gbaPath != "") {
             if (!message("Loading NDS ROM", "Load the previous GBA ROM alongside this ROM?", 1))
