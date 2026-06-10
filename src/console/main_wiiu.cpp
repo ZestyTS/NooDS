@@ -414,6 +414,7 @@ int main() {
         (readAutobootPath("fs:/vol/content/autoboot.txt", autobootPath) ||
          readAutobootPath("fs:/vol/content/noods/autoboot.txt", autobootPath) ||
          readAutobootPath(base + "/wiiu/apps/noods/autoboot.txt", autobootPath) ||
+         readAutobootPath(base + "/noods/autoboot.txt", autobootPath) ||
          readAutobootPath(base + "/uinjectforge/noods/autoboot.txt", autobootPath)) &&
         ConsoleUI::setPath(autobootPath) == 2;
 

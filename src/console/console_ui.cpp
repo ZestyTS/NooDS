@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -335,10 +336,19 @@ void ConsoleUI::mainLoop(MenuTouch (*specialTouch)(), ScreenLayout *touchLayout)
     }
 }
 
+static bool hasRomExtension(const std::string &path, const std::string &extension) {
+    if (path.length() < extension.length())
+        return false;
+
+    return std::equal(extension.rbegin(), extension.rend(), path.rbegin(),
+        [](char expected, char actual) {
+            return expected == std::tolower((unsigned char)actual);
+        });
+}
+
 int ConsoleUI::setPath(std::string path) {
     // Set the ROM path if the extension matches
-    if (path.find(".nds", path.length() - 4) != std::string::npos ||
-        path.find(".srl", path.length() - 4) != std::string::npos) { // NDS ROM
+    if (hasRomExtension(path, ".nds") || hasRomExtension(path, ".srl")) { // NDS ROM
         // If a GBA path is set, allow clearing it
         if (gbaPath != "") {
             if (!message("Loading NDS ROM", "Load the previous GBA ROM alongside this ROM?", 1))
