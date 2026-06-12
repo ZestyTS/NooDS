@@ -35,7 +35,14 @@ rom=fs:/vol/content/games/game.nds
 fallback=filebrowser
 show_error=1
 log=1
+screenArrangement=2
+screenSizing=0
+screenGap=0
+screenRotation=0
 ```
+
+Optional layout keys use the same values as NooDS settings: `screenPosition` 0-4, `screenRotation` 0-1,
+`screenArrangement` 0-3, `screenSizing` 0-2, `screenGap` 0-3, `aspectRatio` 0-3, and `integerScale` 0-1.
 
 Autoboot diagnostics are written to `sd:/uinjectforge/noods/autoboot.log` when the Wii U runtime reaches startup.
 

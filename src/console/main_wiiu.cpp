@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <sys/stat.h>
@@ -305,6 +306,8 @@ static std::string lowerAutobootToken(std::string value) {
     return value;
 }
 
+static void writeAutobootLog(const std::string &message, bool enabled);
+
 static bool parseAutobootBool(const std::string &value, bool defaultValue) {
     std::string normalized = lowerAutobootToken(trimAutobootLine(value));
     if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on")
@@ -312,6 +315,81 @@ static bool parseAutobootBool(const std::string &value, bool defaultValue) {
     if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off")
         return false;
     return defaultValue;
+}
+
+static bool parseAutobootInt(const std::string &value, int minValue, int maxValue, int &result) {
+    std::string trimmed = trimAutobootLine(value);
+    if (trimmed.empty())
+        return false;
+
+    char *end = nullptr;
+    long parsed = std::strtol(trimmed.c_str(), &end, 10);
+    if (end == trimmed.c_str() || *end != '\0')
+        return false;
+
+    if (parsed < minValue)
+        parsed = minValue;
+    else if (parsed > maxValue)
+        parsed = maxValue;
+
+    result = (int)parsed;
+    return true;
+}
+
+static bool applyAutobootLayoutOption(const std::string &name, const std::string &value, bool logEnabled) {
+    int parsed = 0;
+    int *target = nullptr;
+    int minValue = 0;
+    int maxValue = 0;
+    std::string settingName;
+
+    if (name == "screenposition" || name == "screen_position") {
+        target = &ScreenLayout::screenPosition;
+        maxValue = 4;
+        settingName = "screenPosition";
+    }
+    else if (name == "screenrotation" || name == "screen_rotation") {
+        target = &ScreenLayout::screenRotation;
+        maxValue = 1;
+        settingName = "screenRotation";
+    }
+    else if (name == "screenarrangement" || name == "screen_arrangement") {
+        target = &ScreenLayout::screenArrangement;
+        maxValue = 3;
+        settingName = "screenArrangement";
+    }
+    else if (name == "screensizing" || name == "screen_sizing") {
+        target = &ScreenLayout::screenSizing;
+        maxValue = 2;
+        settingName = "screenSizing";
+    }
+    else if (name == "screengap" || name == "screen_gap") {
+        target = &ScreenLayout::screenGap;
+        maxValue = 3;
+        settingName = "screenGap";
+    }
+    else if (name == "aspectratio" || name == "aspect_ratio") {
+        target = &ScreenLayout::aspectRatio;
+        maxValue = 3;
+        settingName = "aspectRatio";
+    }
+    else if (name == "integerscale" || name == "integer_scale") {
+        target = &ScreenLayout::integerScale;
+        maxValue = 1;
+        settingName = "integerScale";
+    }
+    else {
+        return false;
+    }
+
+    if (!parseAutobootInt(value, minValue, maxValue, parsed)) {
+        writeAutobootLog("Ignored invalid layout setting " + settingName + "=" + value, logEnabled);
+        return true;
+    }
+
+    *target = parsed;
+    writeAutobootLog("Applied layout setting " + settingName + "=" + std::to_string(parsed), logEnabled);
+    return true;
 }
 
 static void initializeAutobootLog(const std::string &base) {
@@ -374,6 +452,9 @@ static bool readAutobootConfig(const std::string &configPath, AutobootConfig &co
         }
         else if (name == "log" || name == "logging") {
             config.logEnabled = parseAutobootBool(value, config.logEnabled);
+        }
+        else {
+            applyAutobootLayoutOption(name, value, config.logEnabled);
         }
     }
 
