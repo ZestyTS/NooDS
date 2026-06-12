@@ -18,6 +18,27 @@ can be dumped from many systems with [this dumper](https://github.com/mgba-emu/b
 in the settings menu. Save types are automatically detected, but this may not always be accurate. If you run something
 and it has issues with saving, the save type can be overriden in the file menu.
 
+### Wii U Autoboot
+The Wii U build can read an optional `autoboot.txt` from the installed title content or SD card and load a ROM before
+opening the file browser. Supported locations are:
+
+* `fs:/vol/content/autoboot.txt`
+* `fs:/vol/content/noods/autoboot.txt`
+* `sd:/wiiu/apps/noods/autoboot.txt`
+* `sd:/noods/autoboot.txt`
+* `sd:/uinjectforge/noods/autoboot.txt`
+
+The file can contain either a bare ROM path or key/value lines:
+
+```ini
+rom=fs:/vol/content/games/game.nds
+fallback=filebrowser
+show_error=1
+log=1
+```
+
+Autoboot diagnostics are written to `sd:/uinjectforge/noods/autoboot.log` when the Wii U runtime reaches startup.
+
 ### Contributing
 This is a personal project, and I've decided to not review or accept pull requests for it. If you want to help, you can
 test things and report issues or provide feedback. If you can afford it, you can also donate to motivate me and allow me

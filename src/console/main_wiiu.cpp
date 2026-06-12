@@ -36,8 +36,12 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <string>
+#include <sys/stat.h>
+#include <vector>
 
 #include "console_ui.h"
+#include "../defines.h"
 #include "../settings.h"
 
 #define MAX_DRAWS 1024
@@ -266,6 +270,18 @@ void outputAudio(void *data, uint8_t *buffer, int length) {
     ConsoleUI::fillAudioBuffer((uint32_t*)buffer, length / sizeof(uint32_t), 32768);
 }
 
+struct AutobootConfig {
+    bool foundConfig = false;
+    bool foundRom = false;
+    bool fallbackToBrowser = true;
+    bool showFailure = true;
+    bool logEnabled = true;
+    std::string configPath;
+    std::string romPath;
+};
+
+static std::string autobootLogPath;
+
 static std::string trimAutobootLine(std::string line) {
     // Remove comments and surrounding whitespace.
     size_t comment = line.find('#');
@@ -280,36 +296,116 @@ static std::string trimAutobootLine(std::string line) {
     while (end > start && std::isspace((unsigned char)line[end - 1]))
         end--;
 
-    line = line.substr(start, end - start);
-    if (line.rfind("rom=", 0) == 0)
-        line = line.substr(4);
-
-    start = 0;
-    while (start < line.size() && std::isspace((unsigned char)line[start]))
-        start++;
-
-    end = line.size();
-    while (end > start && std::isspace((unsigned char)line[end - 1]))
-        end--;
-
     return line.substr(start, end - start);
 }
 
-static bool readAutobootPath(const std::string &configPath, std::string &romPath) {
+static std::string lowerAutobootToken(std::string value) {
+    for (char &c : value)
+        c = std::tolower((unsigned char)c);
+    return value;
+}
+
+static bool parseAutobootBool(const std::string &value, bool defaultValue) {
+    std::string normalized = lowerAutobootToken(trimAutobootLine(value));
+    if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on")
+        return true;
+    if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off")
+        return false;
+    return defaultValue;
+}
+
+static void initializeAutobootLog(const std::string &base) {
+    mkdir((base + "/uinjectforge").c_str() MKDIR_ARGS);
+    mkdir((base + "/uinjectforge/noods").c_str() MKDIR_ARGS);
+    autobootLogPath = base + "/uinjectforge/noods/autoboot.log";
+
+    std::ofstream output(autobootLogPath, std::ios::out | std::ios::trunc);
+    if (output.is_open())
+        output << "NooDS Wii U autoboot startup\n";
+}
+
+static void writeAutobootLog(const std::string &message, bool enabled = true) {
+    if (!enabled || autobootLogPath.empty())
+        return;
+
+    std::ofstream output(autobootLogPath, std::ios::out | std::ios::app);
+    if (output.is_open())
+        output << message << "\n";
+}
+
+static bool readAutobootConfig(const std::string &configPath, AutobootConfig &config) {
     std::ifstream input(configPath);
     if (!input.is_open())
         return false;
 
+    config.foundConfig = true;
+    config.configPath = configPath;
+    writeAutobootLog("Opened config: " + configPath, config.logEnabled);
+
     std::string line;
     while (std::getline(input, line)) {
         std::string candidate = trimAutobootLine(line);
-        if (!candidate.empty()) {
-            romPath = candidate;
-            return true;
+        if (candidate.empty())
+            continue;
+
+        size_t split = candidate.find('=');
+        if (split == std::string::npos) {
+            if (!config.foundRom) {
+                config.romPath = candidate;
+                config.foundRom = true;
+            }
+            continue;
+        }
+
+        std::string name = lowerAutobootToken(trimAutobootLine(candidate.substr(0, split)));
+        std::string value = trimAutobootLine(candidate.substr(split + 1));
+        if ((name == "rom" || name == "path" || name == "game") && !value.empty()) {
+            config.romPath = value;
+            config.foundRom = true;
+        }
+        else if (name == "fallback" || name == "fallback_on_fail") {
+            std::string normalized = lowerAutobootToken(value);
+            config.fallbackToBrowser = normalized.empty() || normalized == "filebrowser" ||
+                normalized == "browser" || normalized == "1" || normalized == "true" ||
+                normalized == "yes" || normalized == "on";
+        }
+        else if (name == "show_error" || name == "failure_screen") {
+            config.showFailure = parseAutobootBool(value, config.showFailure);
+        }
+        else if (name == "log" || name == "logging") {
+            config.logEnabled = parseAutobootBool(value, config.logEnabled);
         }
     }
 
-    return false;
+    if (config.foundRom)
+        writeAutobootLog("Configured ROM: " + config.romPath, config.logEnabled);
+    else
+        writeAutobootLog("Config had no ROM path: " + configPath, config.logEnabled);
+
+    return true;
+}
+
+static void showAutobootFailure(const AutobootConfig &config, int result) {
+    while (true) {
+        ConsoleUI::startFrame(0xFF18111F);
+        ConsoleUI::drawRectangle(56, 52, tvWidth - 112, tvHeight - 104, 0xFF241B30);
+        ConsoleUI::drawRectangle(56, 52, tvWidth - 112, 4, 0xFF7A3FD1);
+        ConsoleUI::drawString("NooDS autoboot could not load the game", 84, 84, 34, 0xFFFFFFFF);
+        ConsoleUI::drawString("Config: " + config.configPath, 84, 142, 24, 0xFFD8D3E3);
+        ConsoleUI::drawString("ROM: " + config.romPath, 84, 182, 24, 0xFFD8D3E3);
+        ConsoleUI::drawString("Result: " + std::to_string(result), 84, 222, 24, 0xFFD8D3E3);
+        ConsoleUI::drawString(
+            config.fallbackToBrowser ? "A: open file browser" : "A: return to Wii U Menu",
+            84, tvHeight - 128, 28, 0xFFFFFFFF);
+        ConsoleUI::drawString("HOME: exit through Wii U Menu", 84, tvHeight - 88, 24, 0xFFC8BED8);
+        ConsoleUI::endFrame();
+
+        uint32_t pressed = ConsoleUI::getInputPress();
+        if (pressed & ConsoleUI::defaultKeys[INPUT_A])
+            return;
+
+        SDL_Delay(16);
+    }
 }
 
 int main() {
@@ -408,18 +504,50 @@ int main() {
 
     // Initialize the UI and open the configured autoboot ROM if available.
     std::string base = WHBGetSdCardMountPath();
-    ConsoleUI::initialize(tvWidth, tvHeight, base, base + "/wiiu/apps/noods/");
-    std::string autobootPath;
-    bool loadedAutoboot =
-        (readAutobootPath("fs:/vol/content/autoboot.txt", autobootPath) ||
-         readAutobootPath("fs:/vol/content/noods/autoboot.txt", autobootPath) ||
-         readAutobootPath(base + "/wiiu/apps/noods/autoboot.txt", autobootPath) ||
-         readAutobootPath(base + "/noods/autoboot.txt", autobootPath) ||
-         readAutobootPath(base + "/uinjectforge/noods/autoboot.txt", autobootPath)) &&
-        ConsoleUI::setPath(autobootPath) == 2;
+    initializeAutobootLog(base);
+    writeAutobootLog("SD base: " + base);
 
-    if (!loadedAutoboot)
-        ConsoleUI::fileBrowser();
+    ConsoleUI::initialize(tvWidth, tvHeight, base, base + "/wiiu/apps/noods/");
+    AutobootConfig autobootConfig;
+    std::vector<std::string> autobootPaths = {
+        "fs:/vol/content/autoboot.txt",
+        "fs:/vol/content/noods/autoboot.txt",
+        base + "/wiiu/apps/noods/autoboot.txt",
+        base + "/noods/autoboot.txt",
+        base + "/uinjectforge/noods/autoboot.txt"
+    };
+
+    for (const std::string &path : autobootPaths) {
+        readAutobootConfig(path, autobootConfig);
+        if (autobootConfig.foundRom)
+            break;
+    }
+
+    int autobootResult = -1;
+    bool loadedAutoboot = false;
+    if (autobootConfig.foundRom) {
+        writeAutobootLog("Attempting ROM load: " + autobootConfig.romPath, autobootConfig.logEnabled);
+        autobootResult = ConsoleUI::setPath(autobootConfig.romPath);
+        loadedAutoboot = autobootResult == 2;
+        writeAutobootLog("ROM load result: " + std::to_string(autobootResult), autobootConfig.logEnabled);
+    }
+    else {
+        writeAutobootLog(autobootConfig.foundConfig ? "No autoboot ROM configured." : "No autoboot config found.");
+    }
+
+    if (!loadedAutoboot) {
+        if (autobootConfig.foundConfig && autobootConfig.showFailure)
+            showAutobootFailure(autobootConfig, autobootResult);
+
+        if (!autobootConfig.foundConfig || autobootConfig.fallbackToBrowser)
+            ConsoleUI::fileBrowser();
+        else {
+            writeAutobootLog("Exiting after autoboot failure because fallback is disabled.", autobootConfig.logEnabled);
+            SYSLaunchMenu();
+            ProcUIShutdown();
+            return 0;
+        }
+    }
 
     // Run the emulator until it exits
     ConsoleUI::mainLoop(nullptr, &gpLayout);
