@@ -350,7 +350,7 @@ static bool applyAutobootLayoutOption(const std::string &name, const std::string
     }
     else if (name == "screenrotation" || name == "screen_rotation") {
         target = &ScreenLayout::screenRotation;
-        maxValue = 1;
+        maxValue = 2;
         settingName = "screenRotation";
     }
     else if (name == "screenarrangement" || name == "screen_arrangement") {
@@ -389,6 +389,66 @@ static bool applyAutobootLayoutOption(const std::string &name, const std::string
 
     *target = parsed;
     writeAutobootLog("Applied layout setting " + settingName + "=" + std::to_string(parsed), logEnabled);
+    return true;
+}
+
+static bool applyAutobootRuntimeOption(const std::string &name, const std::string &value, bool logEnabled) {
+    int parsed = 0;
+    int *target = nullptr;
+    int maxValue = 0;
+    std::string settingName;
+
+    if (name == "frameskip" || name == "frame_skip") {
+        target = &Settings::frameskip;
+        maxValue = 5;
+        settingName = "frameskip";
+    }
+    else if (name == "screenfilter" || name == "screen_filter") {
+        target = &Settings::screenFilter;
+        maxValue = 2;
+        settingName = "screenFilter";
+    }
+    else if (name == "threaded2d" || name == "threaded_2d") {
+        target = &Settings::threaded2D;
+        maxValue = 1;
+        settingName = "threaded2D";
+    }
+    else if (name == "threaded3d" || name == "threaded_3d") {
+        target = &Settings::threaded3D;
+        maxValue = 2;
+        settingName = "threaded3D";
+    }
+    else if (name == "highres3d" || name == "high_res_3d") {
+        target = &Settings::highRes3D;
+        maxValue = 1;
+        settingName = "highRes3D";
+    }
+    else if (name == "fpslimiter" || name == "fps_limiter") {
+        target = &Settings::fpsLimiter;
+        maxValue = 1;
+        settingName = "fpsLimiter";
+    }
+    else if (name == "emulateaudio" || name == "emulate_audio") {
+        target = &Settings::emulateAudio;
+        maxValue = 1;
+        settingName = "emulateAudio";
+    }
+    else if (name == "audio16bit" || name == "audio_16_bit") {
+        target = &Settings::audio16Bit;
+        maxValue = 1;
+        settingName = "audio16Bit";
+    }
+    else {
+        return false;
+    }
+
+    if (!parseAutobootInt(value, 0, maxValue, parsed)) {
+        writeAutobootLog("Ignored invalid runtime setting " + settingName + "=" + value, logEnabled);
+        return true;
+    }
+
+    *target = parsed;
+    writeAutobootLog("Applied runtime setting " + settingName + "=" + std::to_string(parsed), logEnabled);
     return true;
 }
 
@@ -454,7 +514,8 @@ static bool readAutobootConfig(const std::string &configPath, AutobootConfig &co
             config.logEnabled = parseAutobootBool(value, config.logEnabled);
         }
         else {
-            applyAutobootLayoutOption(name, value, config.logEnabled);
+            if (!applyAutobootLayoutOption(name, value, config.logEnabled))
+                applyAutobootRuntimeOption(name, value, config.logEnabled);
         }
     }
 
