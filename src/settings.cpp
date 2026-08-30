@@ -17,6 +17,8 @@
     along with NooDS. If not, see <https://www.gnu.org/licenses/>.
 */
 
+#include <cctype>
+#include <cstdlib>
 #include <sys/stat.h>
 #include "core.h"
 
@@ -73,6 +75,18 @@ void Settings::add(std::vector<Setting> &settings) {
     Settings::settings.insert(Settings::settings.end(), settings.begin(), settings.end());
 }
 
+static std::string trimSettingToken(std::string value) {
+    size_t start = 0;
+    while (start < value.size() && std::isspace((unsigned char)value[start]))
+        start++;
+
+    size_t end = value.size();
+    while (end > start && std::isspace((unsigned char)value[end - 1]))
+        end--;
+
+    return value.substr(start, end - start);
+}
+
 bool Settings::load(std::string path) {
     // Set the base path and ensure all folders exist
     mkdir((basePath = path).c_str() MKDIR_ARGS);
@@ -97,14 +111,21 @@ bool Settings::load(std::string path) {
     while (fgets(data, 512, file) != nullptr) {
         std::string line = data;
         size_t split = line.find('=');
-        std::string name = line.substr(0, split);
+        if (split == std::string::npos)
+            continue;
+
+        std::string name = trimSettingToken(line.substr(0, split));
         for (size_t i = 0; i < settings.size(); i++) {
             if (name != settings[i].name) continue;
-            std::string value = line.substr(split + 1, line.size() - split - 2);
+            std::string value = trimSettingToken(line.substr(split + 1));
             if (settings[i].isString)
                 *(std::string*)settings[i].value = value;
-            else if (value[0] >= '0' && value[0] <= '9')
-                *(int*)settings[i].value = stoi(value);
+            else {
+                char *end = nullptr;
+                long parsed = std::strtol(value.c_str(), &end, 10);
+                if (end != value.c_str())
+                    *(int*)settings[i].value = (int)parsed;
+            }
             break;
         }
     }
