@@ -1,0 +1,30 @@
+name: Wii U autoboot runtime
+on:
+  push:
+    branches: [release/wiiu-autoboot-1]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Wii U runtime
+        run: |
+          docker run --rm --network none -v "$PWD:/project" -w /project wiiuenv/devkitppc:20220907@sha256:89c103af512364934da0cbd816e8f570a4fea159a436cf6d06a5714473c87310 make wiiu -j2
+          git rev-parse HEAD > BUILD-COMMIT.txt
+          sha256sum noods.rpx noods.wuhb > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NooDS-WiiU-unverified-build
+          if-no-files-found: error
+          path: |
+            noods.rpx
+            noods.wuhb
+            BUILD-COMMIT.txt
+            SHA256SUMS.txt
+            LICENSE
+            WIIU-RELEASE.md
